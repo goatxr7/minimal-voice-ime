@@ -1,8 +1,8 @@
 {
-  "versionCode": 154,
-  "versionName": "0.6.51",
-  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.51/minimal-voice-0.6.51-debug.apk",
-  "sha256": "67e7568922645c2b88caae860f2031b37d09fa1a91dc170748f61c0ac77ce68c",
-  "notes": "1. 底栏按屏幕宽度动态分配，中间语音键占 40%，左右四个按键平分剩余空间，五个键间隙统一 3dp。\n2. 中间语音键改成和普通键一样的 12dp 小 R 角，语音和全键盘模式样式统一。\n3. 全键盘单字母输入会展开常用候选词，打 h 会出现“好”“好啊”“好的”“还是”“还有”等，不堆生僻词。\n4. 原有首字母缩写、错键纠错、候选条收起箭头和个人词库顺序保持不变。",
+  "versionCode": 155,
+  "versionName": "0.6.52",
+  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.52/minimal-voice-0.6.52-debug.apk",
+  "sha256": "418477264c9bda9fd8ad12f58a2f2f2b1f3135b70334300e3d24f2fe4f3d92b6",
+  "notes": "1. 设置页接口地址提示精简，直接说明地址怎么填、哪些格式能识别。\n2. AI 整理文字说明精简，模型说明和跟随识别设置的说明去掉了重复内容。",
   "force": false
 }
