@@ -1,8 +1,8 @@
 {
-  "versionCode": 153,
-  "versionName": "0.6.50",
-  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.50/minimal-voice-0.6.50-debug.apk",
-  "sha256": "8ce88e84c6e60f4d47dc751d787f4d1d9f217d06d6807a87a99a1365943c2e09",
-  "notes": "1. 全键盘中文支持首字母缩写：hd 出“好的”，hhh 出“哈哈哈”，nh 出“你好”，zd 出“知道”，xx 出“谢谢”。\n2. 词库按音节首字母建立缩写索引，常用缩写不再只认完整拼音。\n3. 增加输错键纠错：相邻键按错、相邻字母颠倒、zh/z、ch/c、sh/s、ang/an、eng/en、ing/in 等常见拼音混淆都会补纠错候选。\n4. 全键盘候选条右侧加收起箭头，和候选文字同一行，点击后先把第一候选上屏，再回到极简语音输入，不增加键盘高度。\n5. 缩写和纠错候选排在完整拼音候选后面，原有全拼、个人词库和快捷输入顺序不变。",
+  "versionCode": 154,
+  "versionName": "0.6.51",
+  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.51/minimal-voice-0.6.51-debug.apk",
+  "sha256": "67e7568922645c2b88caae860f2031b37d09fa1a91dc170748f61c0ac77ce68c",
+  "notes": "1. 底栏按屏幕宽度动态分配，中间语音键占 40%，左右四个按键平分剩余空间，五个键间隙统一 3dp。\n2. 中间语音键改成和普通键一样的 12dp 小 R 角，语音和全键盘模式样式统一。\n3. 全键盘单字母输入会展开常用候选词，打 h 会出现“好”“好啊”“好的”“还是”“还有”等，不堆生僻词。\n4. 原有首字母缩写、错键纠错、候选条收起箭头和个人词库顺序保持不变。",
   "force": false
 }

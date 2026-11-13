@@ -45,6 +45,8 @@ public class PinyinDict {
 
     /** 词库里没有、但日常最常用的几个缩写，优先给出来。 */
     private static final Map<String, String> COMMON_ABB = new HashMap<>();
+    /** 单个首字母对应的高频词，打 h 也能直接展开常用候选。 */
+    private static final Map<Character, String[]> SINGLE_INITIAL_WORDS = new HashMap<>();
     /** 键盘上每个键周围一圈，用来纠正按偏一格的情况。 */
     private static final Map<Character, String> KEY_NEIGHBORS = new HashMap<>();
 
@@ -66,6 +68,30 @@ public class PinyinDict {
         COMMON_ABB.put("sd", "收到");
         COMMON_ABB.put("dd", "等等");
         COMMON_ABB.put("mm", "慢慢");
+
+        single('a', "啊", "爱", "安排", "安全", "安装", "按", "岸", "暗");
+        single('b', "不", "吧", "帮", "白", "本", "别", "比", "被", "部门");
+        single('c', "才", "从", "次", "吃", "出", "车", "错", "存", "参", "层");
+        single('d', "的", "大", "都", "到", "点", "对", "东", "等", "定", "段");
+        single('e', "而", "二", "儿", "饿", "耳朵", "儿童", "而且", "俄");
+        single('f', "发", "分", "方", "放", "法", "反", "服务", "发现", "方便", "份");
+        single('g', "个", "过", "给", "更", "高", "关", "刚", "感", "搞", "够");
+        single('h', "好", "好啊", "好的", "还是", "还有", "和", "会", "很", "话", "回");
+        single('j', "就", "几", "家", "见", "将", "讲", "今天", "经济", "觉得", "继续");
+        single('k', "可", "看", "快", "开", "口", "空", "课", "客人", "开始", "可能");
+        single('l', "了", "来", "里", "老", "两", "连", "路", "类", "楼", "离");
+        single('m', "没", "没有", "们", "每", "买", "卖", "吗", "明", "名", "面");
+        single('n', "你", "年", "那", "能", "女", "男", "拿", "内", "南", "难");
+        single('o', "哦", "欧", "偶", "欧洲", "偶尔", "藕");
+        single('p', "怕", "跑", "朋", "平", "批", "票", "片", "品", "陪", "排");
+        single('q', "去", "起", "其", "前", "钱", "请", "亲", "全", "情", "期");
+        single('r', "人", "日", "如", "让", "认", "热", "软", "肉", "容", "仍");
+        single('s', "是", "时", "事", "上", "说", "什么", "三", "四", "送", "算");
+        single('t', "他", "她", "它", "他们", "听", "天", "太", "同", "头", "谈");
+        single('w', "我", "我们", "为", "问", "位", "完", "晚", "外", "玩", "往");
+        single('x', "下", "小", "想", "先", "新", "心", "行", "学", "喜欢", "现");
+        single('y', "有", "一", "也", "要", "又", "用", "已", "因", "样", "一点");
+        single('z', "在", "这", "中", "做", "走", "再", "最", "怎么", "知道", "着");
 
         KEY_NEIGHBORS.put('q', "wa");
         KEY_NEIGHBORS.put('w', "qeasd");
@@ -93,6 +119,10 @@ public class PinyinDict {
         KEY_NEIGHBORS.put('b', "vghn");
         KEY_NEIGHBORS.put('n', "bhjm");
         KEY_NEIGHBORS.put('m', "njk");
+    }
+
+    private static void single(char c, String... words) {
+        SINGLE_INITIAL_WORDS.put(c, words);
     }
 
     public static synchronized PinyinDict get(Context ctx) {
@@ -223,6 +253,9 @@ public class PinyinDict {
         addExactWords(letters, out, max);
         addPrefixWords(letters, out, max);
 
+        // 只打一个首字母时，直接展开这个声母下的高频词和常用字
+        addSingleInitial(letters, out, max);
+
         // 像 hd、hhh 这种首字母缩写，优先给常用词，再给词库里能对上的缩写词
         addExactAbbr(letters, out, max);
 
@@ -262,6 +295,22 @@ public class PinyinDict {
             for (String w : e.words) {
                 if (out.size() >= max) return;
                 addIfNew(out, w, max);
+            }
+        }
+    }
+
+    /** 单字母输入：先给人工筛过的常用词，再补声母下高频字。 */
+    private void addSingleInitial(String letters, List<String> out, int max) {
+        if (letters.length() != 1) return;
+        char c = letters.charAt(0);
+        String[] common = SINGLE_INITIAL_WORDS.get(c);
+        if (common != null) {
+            for (String w : common) addIfNew(out, w, max);
+        }
+        List<String> pool = initialChars.get(c);
+        if (pool != null) {
+            for (int i = 0; i < pool.size() && out.size() < max; i++) {
+                addIfNew(out, pool.get(i), max);
             }
         }
     }

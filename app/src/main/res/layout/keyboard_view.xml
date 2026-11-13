@@ -56,17 +56,19 @@
         android:paddingStart="6dp"
         android:paddingEnd="6dp">
 
-        <!-- 左右两组等宽 82dp，中间的语音条才能正中对齐 -->
+        <!-- 中间语音键占 40%，左右四个侧键平分剩余空间，间隙统一 3dp -->
         <LinearLayout
-            android:layout_width="96dp"
+            android:layout_width="0dp"
             android:layout_height="match_parent"
+            android:layout_weight="0.30"
             android:gravity="center_vertical|start"
             android:orientation="horizontal">
 
             <ImageButton
                 android:id="@+id/btn_settings"
-                android:layout_width="40dp"
+                android:layout_width="0dp"
                 android:layout_height="40dp"
+                android:layout_weight="1"
                 android:background="@drawable/bg_btn"
                 android:contentDescription="@string/btn_settings"
                 android:scaleType="centerInside"
@@ -76,8 +78,9 @@
             <!-- 模式键三态：语音显示 ABC，全键盘中文显示中，全键盘英文显示英 -->
             <FrameLayout
                 android:id="@+id/btn_mode"
-                android:layout_width="40dp"
+                android:layout_width="0dp"
                 android:layout_height="40dp"
+                android:layout_weight="1"
                 android:layout_marginStart="3dp"
                 android:background="@drawable/bg_btn">
 
@@ -108,10 +111,10 @@
 
         <FrameLayout
             android:layout_width="0dp"
-            android:layout_height="44dp"
+            android:layout_height="40dp"
             android:layout_marginStart="3dp"
             android:layout_marginEnd="3dp"
-            android:layout_weight="1">
+            android:layout_weight="0.40">
 
         <LinearLayout
             android:id="@+id/btn_voice"
@@ -167,14 +170,16 @@
 
 
         <LinearLayout
-            android:layout_width="96dp"
+            android:layout_width="0dp"
             android:layout_height="match_parent"
+            android:layout_weight="0.30"
             android:gravity="center_vertical|end"
             android:orientation="horizontal">
         <ImageButton
             android:id="@+id/btn_delete_full"
-            android:layout_width="42dp"
+            android:layout_width="0dp"
             android:layout_height="40dp"
+            android:layout_weight="1"
             android:layout_marginStart="3dp"
             android:background="@drawable/bg_btn"
             android:contentDescription="@string/btn_delete"
@@ -185,8 +190,9 @@
 
             <ImageButton
                 android:id="@+id/btn_delete"
-                android:layout_width="40dp"
+                android:layout_width="0dp"
                 android:layout_height="40dp"
+                android:layout_weight="1"
                 android:background="@drawable/bg_btn"
                 android:contentDescription="@string/btn_delete"
                 android:scaleType="centerInside"
@@ -195,8 +201,9 @@
 
             <ImageButton
                 android:id="@+id/btn_send"
-                android:layout_width="42dp"
+                android:layout_width="0dp"
                 android:layout_height="40dp"
+                android:layout_weight="1"
                 android:layout_marginStart="3dp"
                 android:background="@drawable/bg_btn"
                 android:contentDescription="@string/btn_send"
