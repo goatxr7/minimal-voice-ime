@@ -126,6 +126,7 @@ public class SettingsActivity extends AppCompatActivity {
     private TextView chipDark;
     private android.view.View groupVoice;
     private android.view.View groupMore;
+    private android.widget.ScrollView settingsScroll;
     private TextView tvTest;
     private TextView tvKeyResult;
     private TextView tvPolishCheck;
@@ -315,6 +316,32 @@ public class SettingsActivity extends AppCompatActivity {
         chipDark = findViewById(R.id.chip_dark);
         groupVoice = findViewById(R.id.group_voice);
         groupMore = findViewById(R.id.group_more);
+        settingsScroll = findViewById(R.id.settings_scroll);
+        android.view.GestureDetector swipeDetector = new android.view.GestureDetector(this,
+                new android.view.GestureDetector.SimpleOnGestureListener() {
+                    @Override
+                    public boolean onFling(android.view.MotionEvent e1, android.view.MotionEvent e2,
+                                          float velocityX, float velocityY) {
+                        if (e1 == null || e2 == null) return false;
+                        // 只认横向主导、速度够快的甩动，竖向滚动不误触发
+                        if (Math.abs(velocityX) < 700 || Math.abs(velocityX) < Math.abs(velocityY) * 1.5f) {
+                            return false;
+                        }
+                        if (velocityX < 0 && voicePage) {
+                            switchTab(false); // 左滑，切到其他设置
+                            return true;
+                        }
+                        if (velocityX > 0 && !voicePage) {
+                            switchTab(true);  // 右滑，切回模型设置
+                            return true;
+                        }
+                        return false;
+                    }
+                });
+        settingsScroll.setOnTouchListener((v, ev) -> {
+            swipeDetector.onTouchEvent(ev);
+            return false;
+        });
         tvTest = findViewById(R.id.tv_test);
         tvKeyResult = findViewById(R.id.tv_key_result);
         chipSpace = findViewById(R.id.chip_space);
@@ -1630,6 +1657,7 @@ public class SettingsActivity extends AppCompatActivity {
         groupMore.setVisibility(voicePage ? android.view.View.GONE : android.view.View.VISIBLE);
         styleTab(tabVoice, voicePage);
         styleTab(tabMore, !voicePage);
+        if (settingsScroll != null) settingsScroll.fullScroll(View.FOCUS_UP);
     }
 
     /** 选中的页签变蓝底白字，另一个是透明底灰字。 */
