@@ -5,8 +5,8 @@
     android:layout_height="wrap_content"
     android:background="@color/panel_bg"
     android:orientation="vertical"
-    android:paddingTop="3dp"
-    android:paddingBottom="3dp">
+    android:paddingTop="2dp"
+    android:paddingBottom="2dp">
 
     <!-- 转写进度：一条细线，识别和整理的时候才出现 -->
 

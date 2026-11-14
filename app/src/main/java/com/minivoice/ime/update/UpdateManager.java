@@ -2,6 +2,7 @@ package com.minivoice.ime.update;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Build;
@@ -88,6 +89,28 @@ public final class UpdateManager {
         }
     }
 
+    /** 本机当前安装包的整包 SHA-256，带缓存；包路径、大小、修改时间任一变化都重算。 */
+    private static String localApkSha256(Context context) {
+        try {
+            String src = context.getApplicationInfo().sourceDir;
+            if (src == null) return "";
+            File apk = new File(src);
+            if (!apk.exists()) return "";
+            SharedPreferences sp = context.getSharedPreferences("minivoice_prefs", Context.MODE_PRIVATE);
+            String key = src + "|" + apk.length() + "|" + apk.lastModified();
+            String cachedKey = sp.getString("apk_sha_key", "");
+            String cachedSha = sp.getString("apk_sha", "");
+            if (key.equals(cachedKey) && !cachedSha.isEmpty()) return cachedSha;
+            String sha = sha256(apk);
+            if (!sha.isEmpty()) {
+                sp.edit().putString("apk_sha_key", key).putString("apk_sha", sha).apply();
+            }
+            return sha;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     public static void check(Context context, CheckCallback callback) {
         final Context app = context.getApplicationContext();
         Request request = new Request.Builder()
@@ -140,8 +163,18 @@ public final class UpdateManager {
                         return;
                     }
                     final UpdateInfo result = info;
+                    // 版本号没涨时，再比对安装包内容哈希，重打包同版本也能检测到更新；
+                    // 哈希在后台线程算，避免卡主线程
+                    String localSha = "";
+                    if (!result.sha256.isEmpty()) {
+                        localSha = localApkSha256(app);
+                    }
+                    final String localShaFinal = localSha;
                     MAIN.post(() -> {
-                        if (result.versionCode > currentVersionCode(app)) {
+                        boolean newer = result.versionCode > currentVersionCode(app)
+                                || (!localShaFinal.isEmpty()
+                                        && !result.sha256.equalsIgnoreCase(localShaFinal));
+                        if (newer) {
                             callback.onResult(result, null);
                         } else {
                             callback.onResult(null, null);

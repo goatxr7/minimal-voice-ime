@@ -45,6 +45,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import java.io.ByteArrayOutputStream;
 
@@ -102,6 +104,8 @@ public class MinimalVoiceIME extends InputMethodService {
     private ImageButton btnQuickClip;
     /** 当前挂上去的整个键盘根布局，只用来调最小高度，绝不碰它的 LayoutParams。 */
     private View inputRoot;
+    /** 底部导航条或手势小白条占的高度，用来给按键区让出安全间距。 */
+    private int navInsetBottom = 0;
     /** 微博才显示的展开条和右侧小箭头，点一下切换表情区高度。 */
     private FrameLayout flExpand;
     private ImageView ivExpand;
@@ -276,6 +280,13 @@ public class MinimalVoiceIME extends InputMethodService {
         LayoutInflater inflater = LayoutInflater.from(uiCtx);
         View root = inflater.inflate(R.layout.keyboard_view, null, false);
 
+        // 按键区贴顶排布，底部按导航条或手势小白条高度让出安全间距，避免压到底部指示条
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            navInsetBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+            applyKeyboardBottomPadding(root);
+            return insets;
+        });
+
         btnVoice = root.findViewById(R.id.btn_voice);
         // 全键盘里原来中英切换的位置，现在和小键盘一样当删除键用
         btnDeleteFull = root.findViewById(R.id.btn_delete_full);
@@ -349,6 +360,19 @@ public class MinimalVoiceIME extends InputMethodService {
         refreshStatus(getString(R.string.voice_hint));
         inputRoot = root;
         return root;
+    }
+
+    /** 按键区贴顶排布，底部按导航条或手势小白条高度让出安全间距，避免压到底部指示条。 */
+    private void applyKeyboardBottomPadding(View root) {
+        if (root == null) return;
+        int inset = navInsetBottom > 0 ? navInsetBottom : systemNavBarHeight();
+        root.setPadding(0, dp(2), 0, dp(8) + inset);
+    }
+
+    private int systemNavBarHeight() {
+        int resId = getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+        if (resId == 0) return 0;
+        return getResources().getDimensionPixelSize(resId);
     }
 
     /**

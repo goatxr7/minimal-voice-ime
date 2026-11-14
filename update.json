@@ -1,8 +1,8 @@
 {
-  "versionCode": 158,
-  "versionName": "0.6.55",
-  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.55/minimal-voice-0.6.55-debug.apk",
-  "sha256": "ef1b75bfd7a391bb17368cdb22a62a425891384d423919740a64f36eaed5c8bb",
-  "notes": "1. 语音出字后若先发送（空格、回车或聊天 App 发送按钮），打断本轮 AI 整理，结果不再插回输入框。\n2. 长文本按句号、问号、感叹号等句末标点智能分段换行，更好读。\n3. Token 用量明细移到识别板块最底部，AI 整理板块底部空白收紧。",
+  "versionCode": 159,
+  "versionName": "0.6.56",
+  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.56/minimal-voice-0.6.56-debug.apk",
+  "sha256": "ea33dd0690a74e1c41584b4a41d3a28f914b28e9827394a9adb0d5c6671ac8d7",
+  "notes": "1. 按键区整体贴顶排布，底部预留导航条和手势小白条的安全间距，不再贴底冲突。\n2. 版本号没涨但安装包内容不同（整包哈希不一致）时，也能检测到可更新。\n3. 设置页底部更新入口改为一行版本号加检查更新小字，模型设置和其他设置两页底部都可见。",
   "force": false
 }

@@ -59,10 +59,9 @@ import okhttp3.Response;
 
 public class SettingsActivity extends AppCompatActivity {
 
-    private TextView tvUpdateDot;
     private TextView tvCheckUpdateDot;
     private TextView tvCheckUpdate;
-    private LinearLayout llCheckUpdate;
+    private LinearLayout llUpdateFooter;
     private UpdateManager.UpdateInfo pendingUpdate;
     private File pendingInstallFile;
     private boolean updateChecking;
@@ -386,13 +385,10 @@ public class SettingsActivity extends AppCompatActivity {
 
         TextView tvVersion = findViewById(R.id.tv_version);
         tvVersion.setText(UpdateManager.versionLabel(this));
-        tvUpdateDot = findViewById(R.id.tv_update_dot);
         tvCheckUpdateDot = findViewById(R.id.tv_check_update_dot);
         tvCheckUpdate = findViewById(R.id.tv_check_update);
-        llCheckUpdate = findViewById(R.id.ll_check_update);
-        LinearLayout llVersion = findViewById(R.id.ll_version);
-        if (llVersion != null) llVersion.setOnClickListener(v -> onUpdateEntry());
-        if (llCheckUpdate != null) llCheckUpdate.setOnClickListener(v -> onUpdateEntry());
+        llUpdateFooter = findViewById(R.id.ll_update_footer);
+        if (llUpdateFooter != null) llUpdateFooter.setOnClickListener(v -> onUpdateEntry());
         if (tvCheckUpdate != null) tvCheckUpdate.setOnClickListener(v -> onUpdateEntry());
         checkForUpdate(false);
 
@@ -3018,12 +3014,10 @@ public class SettingsActivity extends AppCompatActivity {
             if (tvCheckUpdate != null) tvCheckUpdate.setText("检查更新");
             if (info != null) {
                 pendingUpdate = info;
-                if (tvUpdateDot != null) tvUpdateDot.setVisibility(View.VISIBLE);
                 if (tvCheckUpdateDot != null) tvCheckUpdateDot.setVisibility(View.VISIBLE);
                 if (manual) showUpdateDialog(info);
             } else {
                 pendingUpdate = null;
-                if (tvUpdateDot != null) tvUpdateDot.setVisibility(View.GONE);
                 if (tvCheckUpdateDot != null) tvCheckUpdateDot.setVisibility(View.GONE);
                 if (manual) {
                     String msg = error == null
