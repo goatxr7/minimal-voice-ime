@@ -1,8 +1,8 @@
 {
-  "versionCode": 155,
-  "versionName": "0.6.52",
-  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.52/minimal-voice-0.6.52-debug.apk",
-  "sha256": "418477264c9bda9fd8ad12f58a2f2f2b1f3135b70334300e3d24f2fe4f3d92b6",
-  "notes": "1. 设置页接口地址提示精简，直接说明地址怎么填、哪些格式能识别。\n2. AI 整理文字说明精简，模型说明和跟随识别设置的说明去掉了重复内容。",
+  "versionCode": 158,
+  "versionName": "0.6.55",
+  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.55/minimal-voice-0.6.55-debug.apk",
+  "sha256": "ef1b75bfd7a391bb17368cdb22a62a425891384d423919740a64f36eaed5c8bb",
+  "notes": "1. 语音出字后若先发送（空格、回车或聊天 App 发送按钮），打断本轮 AI 整理，结果不再插回输入框。\n2. 长文本按句号、问号、感叹号等句末标点智能分段换行，更好读。\n3. Token 用量明细移到识别板块最底部，AI 整理板块底部空白收紧。",
   "force": false
 }
