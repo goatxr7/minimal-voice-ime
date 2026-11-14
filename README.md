@@ -117,7 +117,7 @@ https://bailian.console.aliyun.com/cn-beijing/costing-balance/free-quota
 
 ## 怎么编译
 
-需要 JDK 17、Android SDK 34、Gradle 8.7。用 Android Studio 打开 `安卓版` 这一层目录直接跑也行。
+需要 JDK 17、Android SDK 34、NDK 26.1、Gradle 8.7。用 Android Studio 打开 `安卓版` 这一层目录直接跑也行。
 
 命令行：
 
@@ -126,7 +126,7 @@ export JAVA_HOME=/path/to/jdk17
 ./gradlew assembleDebug
 ```
 
-产物在 `app/build/outputs/apk/debug/app-debug.apk`，只打 arm64-v8a。首次编译会从 Maven 拉依赖，国内建议配好镜像。
+产物在 `app/build/outputs/apk/debug/app-debug.apk`，只打 arm64-v8a。首次编译会从 Maven 拉依赖，国内建议配好镜像。`:rime` 模块首次 CMake 构建会联网下载 librime 及其依赖的 C++ 源码并本地编译，需要能访问 GitHub。
 
 仓库里没有放工具链，`devtools/`（JDK、Gradle、Android SDK）是自己装在本地的，已经在 `.gitignore` 里。APK 也不进仓库，去 Releases 拿。
 
