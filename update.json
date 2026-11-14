@@ -1,8 +1,8 @@
 {
-  "versionCode": 159,
-  "versionName": "0.6.56",
-  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.56/minimal-voice-0.6.56-debug.apk",
-  "sha256": "ea33dd0690a74e1c41584b4a41d3a28f914b28e9827394a9adb0d5c6671ac8d7",
-  "notes": "1. 按键区整体贴顶排布，底部预留导航条和手势小白条的安全间距，不再贴底冲突。\n2. 版本号没涨但安装包内容不同（整包哈希不一致）时，也能检测到可更新。\n3. 设置页底部更新入口改为一行版本号加检查更新小字，模型设置和其他设置两页底部都可见。",
+  "versionCode": 160,
+  "versionName": "0.6.57",
+  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.57/minimal-voice-0.6.57-debug.apk",
+  "sha256": "65a56e15491698f9563083f56fc7441df4c5a011b7c0a0d873337506c5788478",
+  "notes": "1. 修复设置页左右跟手翻页后上下滚动内容消失，以及来回滑动两次后页面错乱不显示的问题。\n2. 快捷面板按钮顺序调整，设置键排在最右边，按钮整体缩小一档。\n3. 键盘按键贴顶排布，底部留白加大，不再和底部手势小白条冲突。",
   "force": false
 }
