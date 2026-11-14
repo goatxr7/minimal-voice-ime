@@ -12,7 +12,6 @@ import com.minivoice.ime.asr.LlmPolisher;
 import com.minivoice.ime.asr.LocalLlm;
 import com.minivoice.ime.settings.Prefs;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;

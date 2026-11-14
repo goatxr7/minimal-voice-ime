@@ -10,7 +10,6 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
-import android.graphics.drawable.Drawable;
 import android.inputmethodservice.InputMethodService;
 import android.os.Build;
 import android.os.Handler;
@@ -74,8 +73,6 @@ import com.minivoice.ime.ui.ThemeUtil;
  * 极简语音输入法主服务。面板只保留删除、语音、发送、设置四个键，高度 70dp。
  */
 public class MinimalVoiceIME extends InputMethodService {
-
-    private static final String TAG = "MinimalVoiceIME";
 
     private static MinimalVoiceIME instance;
     /** 当前是否真的在用它输入。切到别的输入法时为 false，按键拦截据此放行。 */
@@ -159,10 +156,21 @@ public class MinimalVoiceIME extends InputMethodService {
     private final java.util.List<String> candList = new java.util.ArrayList<>();
     /** 候选条里哪些名字是词库条目，上屏时换成对应的正文。 */
     private final java.util.Map<String, String> phraseText = new java.util.HashMap<>();
+    /** 候选条里哪些来自 Rime 会话，记录对应候选序号，上屏时走 Rime 选词。 */
+    private final java.util.Map<String, Integer> candRimeIndex = new java.util.HashMap<>();
+    /** 候选计算放后台，主线程只管收结果和画 View。 */
+    private final java.util.concurrent.ExecutorService candPool =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+    /** 每次候选请求的代数，旧结果回来直接丢掉。 */
+    private volatile int candVersion = 0;
+    /** 当前候选对应的拼音串，防止旧候选被空格键误上屏。 */
+    private String candInput = "";
+    private Runnable candDebounce;
     /** 英文状态没有拼音串，自己记着最近敲的字母，好用缩写换词库。 */
     private String enBuf = "";
-    /** 微博里是否已经点开了表情区。切到别的 App 会自动收回。 */
-    private boolean weiboExpanded = false;
+    /** 剪贴板当前可粘贴的文本，空串表示没有可粘贴内容。 */
+    private String clipboardCache = "";
+    private android.content.ClipboardManager.OnPrimaryClipChangedListener clipListener;
     private String currentPkg = null;
     private boolean holdStarted = false;
     /** 录音时上滑取消，松手不再转写。 */
@@ -178,6 +186,10 @@ public class MinimalVoiceIME extends InputMethodService {
     private boolean recording = false;
     private long voiceStartedAt = 0;
     private boolean waiting = false;
+    /** 是否有一轮 AI 整理正在后台跑。 */
+    private boolean polishing = false;
+    /** 整理令牌，发送或重新识别后失效，旧整理结果回来直接丢弃，不再回填。 */
+    private int polishToken = 0;
     /** 最近一次录音的 PCM，转写失败后点一下可以拿它重新转，不用重录。 */
     private final ByteArrayOutputStream retryAudio = new ByteArrayOutputStream();
     private boolean retryReady = false;
@@ -200,12 +212,30 @@ public class MinimalVoiceIME extends InputMethodService {
     public void onCreate() {
         super.onCreate();
         instance = this;
+        try {
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm != null) {
+                clipListener = this::refreshClipboard;
+                cm.addPrimaryClipChangedListener(clipListener);
+                clipboardCache = readClipboard();
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override
     public void onDestroy() {
         instance = null;
         active = false;
+        if (candDebounce != null) main.removeCallbacks(candDebounce);
+        candPool.shutdownNow();
+        try {
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm != null && clipListener != null) cm.removePrimaryClipChangedListener(clipListener);
+        } catch (Throwable ignored) {
+        }
         stopEverything();
         super.onDestroy();
     }
@@ -264,7 +294,7 @@ public class MinimalVoiceIME extends InputMethodService {
         pbInline = btnVoice.findViewById(R.id.pb_inline);
         ringVoice = root.findViewById(R.id.ring_voice);
         if (ringVoice != null) {
-            ringVoice.setRingStyle(3f, 26f);
+            ringVoice.setRingStyle(3f, 12f);
             ringVoice.setShowPercent(false);
         }
 
@@ -359,11 +389,19 @@ public class MinimalVoiceIME extends InputMethodService {
     }
 
     @Override
-    public void onConfigurationChanged(Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
+    public void onConfigurationChanged(Configuration newConfig) {        super.onConfigurationChanged(newConfig);
         // 跟随系统时，手机换亮暗主题要立刻跟上
         if (ThemeUtil.AUTO.equals(ThemeUtil.mode(this)) && getWindow() != null) {
             setInputView(buildInputView());
+        }
+    }
+
+    @Override
+    public void onUpdateSelection(int oldSelStart, int oldSelEnd, int newSelStart, int newSelEnd, int candidatesStart, int candidatesEnd) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd);
+        // 整理还在跑，但 composing 已被外部提交走（点了聊天 App 的发送、粘贴等），本轮整理作废，结果不再回填
+        if (polishing && candidatesStart < 0) {
+            cancelPolish();
         }
     }
 
@@ -619,23 +657,6 @@ public class MinimalVoiceIME extends InputMethodService {
         updateVoiceBar();
     }
 
-    /** 把还挂在输入框里的语音文字收尾，别留一段删不掉的下划线。 */
-    private void settleComposing() {
-        if (voiceComposing.isEmpty()) return;
-        String t = voiceComposing;
-        voiceComposing = "";
-        InputConnection ic = getCurrentInputConnection();
-        if (ic != null) {
-            if (t.isEmpty()) {
-                ic.setComposingText("", 1);
-            } else {
-                ic.setComposingText(t, 1);
-            }
-            ic.finishComposingText();
-        }
-        hasComposing = false;
-    }
-
     private void startRepeatDelete() {
         if (deleteHandler == null) deleteHandler = new Handler(Looper.getMainLooper());
         stopRepeatDelete();
@@ -688,6 +709,8 @@ public class MinimalVoiceIME extends InputMethodService {
     }
 
     private void performSend() {
+        // 发送即打断本轮 AI 整理，整理结果不再回填到输入框
+        cancelPolish();
         // 发送后输入框会清空，候选条里记的英文缩写也要一起清掉，否则会越积越多
         clearComposing();
         InputConnection ic = getCurrentInputConnection();
@@ -965,13 +988,17 @@ public class MinimalVoiceIME extends InputMethodService {
         btnCollapse.setOnClickListener(v -> {
             v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             if (composing.length() > 0) {
-                if (!candList.isEmpty()) {
+                if (!candList.isEmpty() && candInput.equals(composing.toString())) {
                     commitCandidate(candList.get(0));
                 } else {
                     InputConnection ic = getCurrentInputConnection();
                     if (ic != null) ic.commitText(composing.toString(), 1);
                     composing.setLength(0);
                     candList.clear();
+                    phraseText.clear();
+                    candRimeIndex.clear();
+                    candInput = "";
+                    candVersion++;
                 }
             }
             setInputMode(MODE_VOICE);
@@ -993,7 +1020,7 @@ public class MinimalVoiceIME extends InputMethodService {
         installFullKeyTouch();
         refreshCand();
 
-        new Thread(() -> com.minivoice.ime.input.PinyinDict.get(getApplicationContext())).start();
+        new Thread(() -> com.minivoice.ime.input.RimeEngine.initAsync(getApplicationContext())).start();
 
         int idx = parent.indexOfChild(flKeysRow);
         parent.addView(llFull, idx, new LinearLayout.LayoutParams(
@@ -1050,7 +1077,7 @@ public class MinimalVoiceIME extends InputMethodService {
         }
         row.addView(shift);
         String[] mid = {"z", "x", "c", "v", "b", "n", "m"};
-        String[] midPuncts = {"@", ".", "#", "`", "?", "!", "…"};
+        String[] midPuncts = {"@", ".", "#", "，", "?", "!", "…"};
         for (int i = 0; i < mid.length; i++) {
             final String letter = mid[i];
             boolean upper = shiftOn && !pinyinMode;
@@ -1197,19 +1224,24 @@ public class MinimalVoiceIME extends InputMethodService {
                         commitKeyPopup();
                         return true;
                     }
-                    // 往上滑打符号时，以按下去的那颗键为准，别被中途经过的键带偏
-                    boolean mostlyVertical = Math.abs(e.getRawX() - downRawX[0]) < dp(22);
-                    View source = (mostlyVertical && downKey != null) ? downKey : k;
-                    if (source == null) return true;
-                    KeySpec spec = (KeySpec) source.getTag();
-                    if (spec == null || spec.action == null) return true;
-                    source.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-                    if (spec.punct != null && !spec.punct.isEmpty()
-                            && downRawY[0] - e.getRawY() > dp(10)) {
-                        commitPunct(spec.punct);
-                        return true;
+                    // 上滑打符号：始终以按下去的那颗键为准，手指中途滑到别的键也不换
+                    if (downKey != null && downRawY[0] - e.getRawY() > dp(10)) {
+                        KeySpec startSpec = (KeySpec) downKey.getTag();
+                        if (startSpec != null && startSpec.punct != null
+                                && !startSpec.punct.isEmpty()) {
+                            downKey.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                            commitPunct(startSpec.punct);
+                            return true;
+                        }
                     }
-                    spec.action.run();
+                    // 普通短按或滑动换键：以抬起时所在的那颗键上屏
+                    if (k != null) {
+                        KeySpec spec = (KeySpec) k.getTag();
+                        if (spec != null && spec.action != null) {
+                            k.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                            spec.action.run();
+                        }
+                    }
                     return true;
                 }
                 case MotionEvent.ACTION_CANCEL: {
@@ -1236,35 +1268,38 @@ public class MinimalVoiceIME extends InputMethodService {
             dismissTapPopup();
             return;
         }
-        dismissTapPopup();
-
-        TextView tv = new TextView(uiCtx);
+        // 以前每按一个键都新建 PopupWindow，连打时窗口创建本身就会拖慢输入。
+        // 现在复用同一个弹窗和 TextView，只改文字和位置。
+        if (tapPopup == null || tapPopupText == null) {
+            TextView tv = new TextView(uiCtx);
+            tv.setGravity(Gravity.CENTER);
+            tv.setIncludeFontPadding(false);
+            tv.setTextColor(uiCtx.getColor(R.color.text_primary));
+            tv.setBackgroundResource(R.drawable.bg_key_popup);
+            tapPopup = new PopupWindow(tv, dp(44), dp(46), false);
+            tapPopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            tapPopup.setOutsideTouchable(false);
+            tapPopup.setFocusable(false);
+            tapPopup.setElevation(dp(6));
+            tapPopupText = tv;
+        }
+        if (tapPopup.isShowing()) tapPopup.dismiss();
+        TextView tv = tapPopupText;
         tv.setText(spec.mainLabel);
-        tv.setGravity(Gravity.CENTER);
-        tv.setIncludeFontPadding(false);
-        tv.setTextColor(uiCtx.getColor(R.color.text_primary));
-        tv.setBackgroundResource(R.drawable.bg_key_popup);
         boolean wide = spec.mainLabel.length() > 1;
         tv.setTextSize(wide ? 13 : 22);
-
         int w = dp(wide ? 56 : 44);
         int h = dp(46);
-        tapPopup = new PopupWindow(tv, w, h, false);
-        tapPopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        tapPopup.setOutsideTouchable(false);
-        tapPopup.setFocusable(false);
-        tapPopup.setElevation(dp(6));
+        tapPopup.setWidth(w);
+        tapPopup.setHeight(h);
         tapPopup.showAsDropDown(key, (key.getWidth() - w) / 2,
                 -(h + key.getHeight() + dp(2)));
-        tapPopupText = tv;
     }
 
     private void dismissTapPopup() {
-        if (tapPopup != null) {
+        if (tapPopup != null && tapPopup.isShowing()) {
             tapPopup.dismiss();
-            tapPopup = null;
         }
-        tapPopupText = null;
     }
 
     private void showKeyPopup(View key, KeySpec spec) {
@@ -1485,11 +1520,12 @@ public class MinimalVoiceIME extends InputMethodService {
         enBuf = "";
         // 拼音串太长先落第一个候选，免得后面越打越乱
         if (composing.length() >= 24) {
-            if (!candList.isEmpty()) {
+            if (!candList.isEmpty() && candInput.equals(composing.toString())) {
                 commitCandidate(candList.get(0));
             } else if (composing.length() > 0) {
                 ic.commitText(composing.toString(), 1);
                 composing.setLength(0);
+                candInput = "";
             }
         }
         composing.append(key.toLowerCase());
@@ -1513,6 +1549,7 @@ public class MinimalVoiceIME extends InputMethodService {
     }
 
     private void commitEnPhrase(String cand) {
+        cancelPolish();
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
         String body = phraseText.containsKey(cand) ? phraseText.get(cand) : cand;
@@ -1522,6 +1559,10 @@ public class MinimalVoiceIME extends InputMethodService {
         ic.commitText(body, 1);
         enBuf = "";
         candList.clear();
+        phraseText.clear();
+        candRimeIndex.clear();
+        candInput = "";
+        candVersion++;
         refreshCand();
     }
 
@@ -1534,7 +1575,11 @@ public class MinimalVoiceIME extends InputMethodService {
             composing.setLength(0);
         }
         candList.clear();
+        phraseText.clear();
+        candRimeIndex.clear();
+        candInput = "";
         enBuf = "";
+        candVersion++;
         ic.commitText(p, 1);
         refreshCand();
     }
@@ -1561,12 +1606,18 @@ public class MinimalVoiceIME extends InputMethodService {
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
         if (composing.length() > 0) {
-            if (!candList.isEmpty()) {
+            String letters = composing.toString();
+            if (!candList.isEmpty() && candInput.equals(letters)) {
                 commitCandidate(candList.get(0));
             } else {
-                ic.commitText(composing.toString(), 1);
+                // 候选还在算或已经过期，先把拼音原样落下，绝不上屏旧候选
+                ic.commitText(letters, 1);
                 composing.setLength(0);
                 candList.clear();
+                phraseText.clear();
+                candRimeIndex.clear();
+                candInput = "";
+                candVersion++;
                 refreshCand();
             }
             return;
@@ -1574,98 +1625,95 @@ public class MinimalVoiceIME extends InputMethodService {
         insertSpace();
     }
 
-    private void fullEnter() {
-        clearComposing();
-        performSend();
-    }
-
     private void clearComposing() {
         composing.setLength(0);
         candList.clear();
+        phraseText.clear();
+        candRimeIndex.clear();
+        candInput = "";
         enBuf = "";
+        candVersion++;
         refreshCand();
     }
 
     private void refreshCand() {
         if (llCandBar == null) return;
+        updateVoiceBar();
+        if (!pinyinMode) {
+            candVersion++;
+            refreshEnglishCand();
+            return;
+        }
+        if (composing.length() == 0) {
+            candVersion++;
+            renderEmptyCand();
+            return;
+        }
+        schedulePinyinCand(composing.toString());
+    }
+
+    /** 候选计算全部挪到后台，主线程只负责最后的候选 View。 */
+    private void schedulePinyinCand(final String letters) {
+        final int version = ++candVersion;
+        // 新按键一进来，旧候选立刻失去上屏资格，避免误点旧词
+        candInput = "";
+        if (candDebounce != null) main.removeCallbacks(candDebounce);
+        // 连续敲键时每 35 毫秒只算最后一串，中间结果直接跳过
+        candDebounce = () -> candPool.execute(() -> {
+            if (version != candVersion) return;
+            final java.util.List<com.minivoice.ime.data.PhraseStore.Phrase> phrases =
+                    com.minivoice.ime.data.PhraseStore.match(
+                            getApplicationContext(), letters, 3);
+            if (version != candVersion) return;
+            final java.util.List<com.minivoice.ime.input.RimeEngine.Cand> dict =
+                    com.minivoice.ime.input.RimeEngine.candidates(
+                            getApplicationContext(), letters);
+            if (version != candVersion) return;
+            main.post(() -> {
+                if (version != candVersion) return;
+                if (pinyinMode && letters.equals(composing.toString())) {
+                    renderPinyinCand(letters, phrases, dict);
+                }
+            });
+        });
+        main.postDelayed(candDebounce, 35);
+    }
+
+    private void renderPinyinCand(String letters,
+                                  java.util.List<com.minivoice.ime.data.PhraseStore.Phrase> phrases,
+                                  java.util.List<com.minivoice.ime.input.RimeEngine.Cand> dict) {
+        if (llCandBar == null) return;
         llCandBar.removeAllViews();
         candList.clear();
-        updateVoiceBar();
-        if (composing.length() == 0 && (pinyinMode || enBuf.isEmpty())) {
-            setCandBarHeight(36);
-            TextView hint = new TextView(uiCtx);
-            hint.setText(pinyinMode ? "拼音输入，点候选上屏" : "英文输入");
-            hint.setTextSize(11);
-            hint.setTextColor(uiCtx.getColor(R.color.text_hint));
-            hint.setGravity(Gravity.CENTER_VERTICAL);
-            llCandBar.addView(hint, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            updateVoiceBar();
-            return;
-        }
-        String letters = composing.toString();
-        if (!pinyinMode) {
-            phraseText.clear();
-            java.util.List<com.minivoice.ime.data.PhraseStore.Phrase> hits =
-                    com.minivoice.ime.data.PhraseStore.match(this, enBuf, 4);
-            if (!hits.isEmpty()) {
-                for (com.minivoice.ime.data.PhraseStore.Phrase p : hits) {
-                    String show = p.text.replace("\n", " · ");
-                    if (candList.contains(show)) continue;
-                    candList.add(show);
-                    phraseText.put(show, p.text);
-                }
-                setCandBarHeight(60);
-                int n0 = Math.min(candList.size(), 6);
-                for (int i = 0; i < n0; i++) {
-                    final String cand = candList.get(i);
-                    TextView chip = new TextView(uiCtx);
-                    chip.setText(cand);
-                    chip.setTextSize(12);
-                    chip.setMaxLines(3);
-                    chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                    chip.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.75));
-                    chip.setGravity(Gravity.CENTER_VERTICAL);
-                    chip.setIncludeFontPadding(false);
-                    chip.setTextColor(uiCtx.getColor(R.color.accent));
-                    chip.setGravity(Gravity.CENTER);
-                    chip.setPadding(dp(10), 0, dp(10), 0);
-                    chip.setOnClickListener(v -> {
-                        v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-                        commitEnPhrase(cand);
-                    });
-                    llCandBar.addView(chip, new LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                }
-                updateVoiceBar();
-                return;
-            }
-            setCandBarHeight(36);
-            TextView tv = new TextView(uiCtx);
-            tv.setText(enBuf.isEmpty() ? "英文输入" : enBuf);
-            tv.setTextSize(14);
-            tv.setTextColor(uiCtx.getColor(R.color.text_primary));
-            tv.setGravity(Gravity.CENTER_VERTICAL);
-            llCandBar.addView(tv, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            updateVoiceBar();
-            return;
-        }
-        updateVoiceBar();
         phraseText.clear();
-        // 个人词库和快捷输入排在候选最前面：打 fp 出来的就是发票抬头
+        candRimeIndex.clear();
         boolean hasPhrase = false;
-        for (com.minivoice.ime.data.PhraseStore.Phrase p :
-                com.minivoice.ime.data.PhraseStore.match(this, letters, 3)) {
-            String show = p.text.replace("\n", " · ");
-            if (candList.contains(show)) continue;
-            candList.add(show);
-            phraseText.put(show, p.text);
-            hasPhrase = true;
+        // 个人词库和快捷输入排最前：打 fp 出来的就是发票抬头
+        if (phrases != null) {
+            for (com.minivoice.ime.data.PhraseStore.Phrase p : phrases) {
+                String show = p.text.replace("\n", " · ");
+                if (candList.contains(show)) continue;
+                candList.add(show);
+                phraseText.put(show, p.text);
+                hasPhrase = true;
+            }
         }
-        for (String c : com.minivoice.ime.input.PinyinDict.get(this).candidates(letters, 18)) {
-            if (!candList.contains(c)) candList.add(c);
+        if (dict != null) {
+            // 同一拼音下被点过的高频词提前，没点过的保持词典原顺序（稳定排序）
+            java.util.Map<String, Integer> freq =
+                    com.minivoice.ime.data.UserFreqStore.freqOf(getApplicationContext(), letters);
+            if (!freq.isEmpty()) {
+                dict.sort((a, b) -> Integer.compare(
+                        freq.getOrDefault(b == null ? "" : b.text, 0),
+                        freq.getOrDefault(a == null ? "" : a.text, 0)));
+            }
+            for (com.minivoice.ime.input.RimeEngine.Cand c : dict) {
+                if (c == null || c.text == null || c.text.isEmpty()) continue;
+                if (!candList.contains(c.text)) candList.add(c.text);
+                candRimeIndex.put(c.text, c.index);
+            }
         }
+        candInput = letters;
         if (candList.isEmpty()) {
             TextView tv = new TextView(uiCtx);
             tv.setText(letters + " 没有候选");
@@ -1674,6 +1722,7 @@ public class MinimalVoiceIME extends InputMethodService {
             tv.setGravity(Gravity.CENTER_VERTICAL);
             llCandBar.addView(tv, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            updateVoiceBar();
             return;
         }
         setCandBarHeight(hasPhrase ? 60 : 36);
@@ -1692,26 +1741,188 @@ public class MinimalVoiceIME extends InputMethodService {
             tv.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.75));
             tv.setPadding(dp(10), 0, dp(isPhrase ? 14 : 10), 0);
             tv.setOnClickListener(v -> {
+                if (!candInput.equals(letters) || !letters.equals(composing.toString())) return;
                 v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                 commitCandidate(cand);
             });
             llCandBar.addView(tv, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
+        addClipboardChip(llCandBar);
+        updateVoiceBar();
+    }
+
+    private void renderEmptyCand() {
+        if (llCandBar == null) return;
+        llCandBar.removeAllViews();
+        candList.clear();
+        phraseText.clear();
+        candRimeIndex.clear();
+        candInput = "";
+        setCandBarHeight(36);
+        TextView hint = new TextView(uiCtx);
+        hint.setText(pinyinMode ? "拼音输入，点候选上屏" : "英文输入");
+        hint.setTextSize(11);
+        hint.setTextColor(uiCtx.getColor(R.color.text_hint));
+        hint.setGravity(Gravity.CENTER_VERTICAL);
+        llCandBar.addView(hint, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        addClipboardChip(llCandBar);
+        updateVoiceBar();
+    }
+
+    private void refreshEnglishCand() {
+        if (llCandBar == null) return;
+        llCandBar.removeAllViews();
+        candList.clear();
+        phraseText.clear();
+        candRimeIndex.clear();
+        candInput = "";
+        if (enBuf.isEmpty()) {
+            setCandBarHeight(36);
+            TextView hint = new TextView(uiCtx);
+            hint.setText("英文输入");
+            hint.setTextSize(11);
+            hint.setTextColor(uiCtx.getColor(R.color.text_hint));
+            hint.setGravity(Gravity.CENTER_VERTICAL);
+            llCandBar.addView(hint, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            addClipboardChip(llCandBar);
+            updateVoiceBar();
+            return;
+        }
+        java.util.List<com.minivoice.ime.data.PhraseStore.Phrase> hits =
+                com.minivoice.ime.data.PhraseStore.match(this, enBuf, 4);
+        if (!hits.isEmpty()) {
+            for (com.minivoice.ime.data.PhraseStore.Phrase p : hits) {
+                String show = p.text.replace("\n", " · ");
+                if (candList.contains(show)) continue;
+                candList.add(show);
+                phraseText.put(show, p.text);
+            }
+            setCandBarHeight(60);
+            int n0 = Math.min(candList.size(), 6);
+            for (int i = 0; i < n0; i++) {
+                final String cand = candList.get(i);
+                TextView chip = new TextView(uiCtx);
+                chip.setText(cand);
+                chip.setTextSize(12);
+                chip.setMaxLines(3);
+                chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                chip.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.75));
+                chip.setGravity(Gravity.CENTER_VERTICAL);
+                chip.setIncludeFontPadding(false);
+                chip.setTextColor(uiCtx.getColor(R.color.accent));
+                chip.setGravity(Gravity.CENTER);
+                chip.setPadding(dp(10), 0, dp(10), 0);
+                chip.setOnClickListener(v -> {
+                    v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                    commitEnPhrase(cand);
+                });
+                llCandBar.addView(chip, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            }
+            addClipboardChip(llCandBar);
+            updateVoiceBar();
+            return;
+        }
+        setCandBarHeight(36);
+        TextView tv = new TextView(uiCtx);
+        tv.setText(enBuf);
+        tv.setTextSize(14);
+        tv.setTextColor(uiCtx.getColor(R.color.text_primary));
+        tv.setGravity(Gravity.CENTER_VERTICAL);
+        llCandBar.addView(tv, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        addClipboardChip(llCandBar);
+        updateVoiceBar();
+    }
+
+    private String readClipboard() {
+        try {
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm == null || !cm.hasPrimaryClip()) return "";
+            android.content.ClipData clip = cm.getPrimaryClip();
+            if (clip == null || clip.getItemCount() == 0) return "";
+            CharSequence cs = clip.getItemAt(0).getText();
+            if (cs == null) return "";
+            String s = cs.toString().trim();
+            return s.isEmpty() ? "" : s;
+        } catch (Throwable e) {
+            return "";
+        }
+    }
+
+    private void refreshClipboard() {
+        clipboardCache = readClipboard();
+        refreshCand();
+    }
+
+    /** 候选条首位放一个剪贴板条目，点一下把复制的内容整段粘贴上屏。 */
+    private void addClipboardChip(android.widget.LinearLayout bar) {
+        if (bar == null || clipboardCache.isEmpty()) return;
+        final String full = clipboardCache;
+        String show = full.length() > 24 ? full.substring(0, 24) + "…" : full;
+        TextView tv = new TextView(uiCtx);
+        tv.setText("📋 " + show);
+        tv.setTextSize(13);
+        tv.setIncludeFontPadding(false);
+        tv.setTextColor(uiCtx.getColor(R.color.accent));
+        tv.setGravity(Gravity.CENTER_VERTICAL);
+        tv.setMaxLines(1);
+        tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        tv.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.6));
+        tv.setPadding(dp(10), 0, dp(14), 0);
+        tv.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            commitClipboard(full);
+        });
+        bar.addView(tv, 0, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void commitClipboard(String full) {
+        cancelPolish();
+        InputConnection ic = getCurrentInputConnection();
+        if (ic == null) return;
+        if (composing.length() > 0) composing.setLength(0);
+        ic.commitText(full, 1);
+        enBuf = "";
+        candList.clear();
+        phraseText.clear();
+        candRimeIndex.clear();
+        candInput = "";
+        candVersion++;
+        refreshCand();
+        updateVoiceBar();
     }
 
     private void commitCandidate(String cand) {
+        cancelPolish();
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
         String body = phraseText.containsKey(cand) ? phraseText.get(cand) : cand;
+        Integer rimeIndex = candRimeIndex.get(cand);
+        if (rimeIndex != null && rimeIndex >= 0) {
+            String rimeCommit = com.minivoice.ime.input.RimeEngine.commit(rimeIndex);
+            if (rimeCommit != null && !rimeCommit.isEmpty()) body = rimeCommit;
+        }
         ic.commitText(body, 1);
+        // 记录这次上屏，下次打同样拼音时把这个词提前
+        com.minivoice.ime.data.UserFreqStore.record(getApplicationContext(), candInput, body);
         composing.setLength(0);
         candList.clear();
+        phraseText.clear();
+        candRimeIndex.clear();
+        candInput = "";
         enBuf = "";
+        candVersion++;
         refreshCand();
         updateVoiceBar();
     }
     private void commitKey(String key) {
+        cancelPolish();
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
         if ("⌫".equals(key)) {
@@ -1756,6 +1967,7 @@ public class MinimalVoiceIME extends InputMethodService {
 
     public void startVoice() {
         lastVoiceDoneAt = 0;
+        cancelPolish();
         refreshStatus(getString(R.string.voice_hint));
         if (recording || waiting) return;
         resetRetryAudio();
@@ -2070,6 +2282,7 @@ public class MinimalVoiceIME extends InputMethodService {
     }
 
     public void cancelVoice() {
+        cancelPolish();
         recording = false;
         waiting = false;
         if (hasComposing) {
@@ -2171,7 +2384,7 @@ public class MinimalVoiceIME extends InputMethodService {
             showVoiceRing(false);
             if (pbInline != null) pbInline.setVisibility(View.GONE);
             android.content.Context c = uiCtx != null ? uiCtx : MinimalVoiceIME.this;
-            MarqueeDrawable md = new MarqueeDrawable(c, 26 * getResources().getDisplayMetrics().density);
+            MarqueeDrawable md = new MarqueeDrawable(c, 12 * getResources().getDisplayMetrics().density);
             md.reshuffle();
             btnVoice.setBackground(md);
             if (polishAnim != null) polishAnim.cancel();
@@ -2225,7 +2438,7 @@ public class MinimalVoiceIME extends InputMethodService {
                 showVoiceRing(false);
                 // 录音时是红底加白色波形，文字和麦克风都藏起来
                 android.content.Context c = uiCtx != null ? uiCtx : MinimalVoiceIME.this;
-                WaveformDrawable wd = new WaveformDrawable(c, 26 * getResources().getDisplayMetrics().density);
+                WaveformDrawable wd = new WaveformDrawable(c, 12 * getResources().getDisplayMetrics().density);
                 waveDrawable = wd;
                 btnVoice.setBackground(wd);
                 if (waveAnim != null) waveAnim.cancel();
@@ -2269,8 +2482,10 @@ public class MinimalVoiceIME extends InputMethodService {
     /** 按用户选的引擎整理。异步的返回 true，同步的让它走规则清理。 */
     private boolean startPolish(String raw) {
         String engine = Prefs.getString(this, Prefs.K_POLISH_ENGINE, "cloud");
+        polishing = true;
+        final int token = ++polishToken;
         if ("local".equals(engine)) {
-            if (!LocalLlmModel.ready(this)) return false;
+            if (!LocalLlmModel.ready(this)) { polishing = false; return false; }
             refreshStatus("整理中…");
             startPolishProgress();
             final String src = raw;
@@ -2279,13 +2494,14 @@ public class MinimalVoiceIME extends InputMethodService {
                 final String done = (out == null || out.isEmpty())
                         ? TermFix.apply(MinimalVoiceIME.this, TextPolisher.polishLocal(src))
                         : TermFix.apply(MinimalVoiceIME.this, out);
-                main.post(() -> finishWithText(done));
+                main.post(() -> { if (token == polishToken) finishWithText(done); });
             }).start();
             return true;
         }
         refreshStatus("整理中…");
         startPolishProgress();
         TextPolisher.polish(this, raw, result -> {
+            if (token != polishToken) return;
             String done = TermFix.apply(MinimalVoiceIME.this,
                     (result == null || result.isEmpty()) ? TextPolisher.polishLocal(raw) : result);
             finishWithText(done);
@@ -2293,13 +2509,23 @@ public class MinimalVoiceIME extends InputMethodService {
         return true;
     }
 
+    /** 发送或重新识别时打断本轮整理：令牌作废，后台结果回来直接丢弃，不再回填。 */
+    private void cancelPolish() {
+        if (!polishing) return;
+        polishing = false;
+        polishToken++;
+        stopPolishProgress();
+    }
+
     /** 统一把整理好的文字上屏，收尾动效也在这。 */
     private void finishWithText(String text) {
+        polishing = false;
         waiting = false;
         showBusy(false);
+        String out = TextPolisher.breakBySentence(text);
         InputConnection c = getCurrentInputConnection();
         if (c != null) {
-            c.setComposingText(text, 1);
+            c.setComposingText(out, 1);
             c.finishComposingText();
         }
         hasComposing = false;

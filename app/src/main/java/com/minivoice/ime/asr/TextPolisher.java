@@ -101,6 +101,13 @@ public final class TextPolisher {
         return t;
     }
 
+    /** 一句说完（句末标点）就换行，长段分段更好读；结尾不留多余换行。 */
+    public static String breakBySentence(String text) {
+        if (text == null) return "";
+        String t = text.replaceAll("([。！？!?])(?=\\s*\\S)", "$1\n");
+        return t.trim();
+    }
+
     /** 全都交给模型整理，短句也一样，短句最容易识别错，更需要修。 */
     public static void polish(Context ctx, String raw, Callback cb) {
         if (raw == null || raw.trim().isEmpty()) {

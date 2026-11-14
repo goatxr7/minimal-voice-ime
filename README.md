@@ -135,8 +135,9 @@ export JAVA_HOME=/path/to/jdk17
 ```
 app/src/main/java/com/minivoice/ime/
 ├── service/MinimalVoiceIME.java   输入法本体，按键、全键盘、候选、录音、状态刷新
-├── input/PinyinDict.java          离线拼音词表、分词、组词
+├── input/RimeEngine.java         Rime 拼音候选封装，简拼与错键纠错
 ├── data/PhraseStore.java          快捷输入的存储与缩写匹配
+├── data/UserFreqStore.java        候选词使用频次记录，高频词上移
 ├── data/PhraseAi.java             粘一段内容让 AI 拆成词条
 ├── data/PhraseParser.java         纯 Java 解析，能脱离安卓单独跑
 ├── asr/
@@ -153,13 +154,15 @@ app/src/main/java/com/minivoice/ime/
 └── ui/                            设置页、主题、波形和跑马灯
 ```
 
-拼音词表在 `app/src/main/assets/`，`pinyin_words.txt` 和 `pinyin_chars.txt`，从 jieba 词频筛出来的。
+拼音词库在 `app/src/main/assets/rime/`：`luna_pinyin_simp.dict.yaml` 是简体拼音主词库，`essay.txt` 是联想词，`default.yaml` 和 `pinyin.yaml` 是 Rime 部署配置。`assets/` 根下的 `pinyin_words.txt`、`pinyin_chars.txt` 是辅助简拼与音节表。
+
+`:rime` 模块是 librime 的 JNI 封装，第三方 C++ 链（leveldb、opencc、marisa-trie、yaml-cpp、librime 等）不进仓库，首次 CMake 构建时按 `rime/src/main/jni/cmake/` 里写好的地址和 sha256 自动下载解压，需要 NDK 26.1 和 arm64-v8a 工具链。
 
 ## 已知的坑
 
 - 荣耀的「敲一敲」截屏，键盘弹着的时候用不了，试过 `FLAG_NOT_TOUCH_MODAL` 无效。
 - 豆包、微博这类 App 点发送后会自己收键盘，任何第三方输入法都一样，属于 App 行为，硬弹回来反而更乱。
-- 拼音表只收了词频 100 以上的词，很冷僻的词和个别长串会切得不够漂亮。
+- Rime 简体词库收的是常用词，很冷僻的词和个别长串会切得不够漂亮。
 - ARM 的 Mac 上开安卓模拟器需要虚拟化权限，某些环境跑不起来，这部分只能真机验。
 
 ## 作者：@科技小辛

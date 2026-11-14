@@ -1,0 +1,8 @@
+.cxx/
+
+src/androidTest/
+src/test/
+
+src/main/jni/deps/
+src/main/jni/Downloads
+src/main/jni/include/

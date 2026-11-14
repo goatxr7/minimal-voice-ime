@@ -50,8 +50,6 @@
     <string name="settings_polish_model_label">整理模型（文字整理）</string>
     <string name="hint_polish_model">只填普通文本模型，默认 qwen3.8-flash。名字带 asr、audio、realtime 的是语音模型，不能填这里。</string>
     <string name="hint_endpoint">填账号里的 OpenAI 兼容地址，控制台整行复制即可。base 地址、完整 chat/completions 地址或域名都能识别，留空会试默认地址。</string>
-    <string name="check_asr_ok">这是语音识别模型，可以用于识别</string>
-    <string name="check_asr_unknown">名字里没有 asr、audio 或 realtime，先确认它是不是语音识别模型</string>
     <string name="check_polish_ok">这是文本模型，可以用于整理文字</string>
     <string name="check_polish_bad">这是语音识别模型，不能用于整理文字</string>
     <string name="settings_polish_endpoint_label">接口地址</string>

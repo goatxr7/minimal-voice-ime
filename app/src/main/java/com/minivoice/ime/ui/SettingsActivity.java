@@ -1,13 +1,8 @@
 package com.minivoice.ime.ui;
 
-import android.Manifest;
 import android.app.Dialog;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.content.pm.PackageManager;
-import android.media.AudioFormat;
-import android.media.AudioRecord;
-import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -27,7 +22,6 @@ import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.gson.JsonObject;
@@ -134,7 +128,6 @@ public class SettingsActivity extends AppCompatActivity {
     private android.view.View groupMore;
     private TextView tvTest;
     private TextView tvKeyResult;
-    private TextView tvAsrCheck;
     private TextView tvPolishCheck;
     private TextView chipSpace;
     private TextView chipSend;
@@ -183,7 +176,6 @@ public class SettingsActivity extends AppCompatActivity {
         etPolishEndpoint = findViewById(R.id.et_polish_endpoint);
         etPolishKey = findViewById(R.id.et_polish_key);
         btnPolishKeyEye = findViewById(R.id.btn_polish_key_eye);
-        tvAsrCheck = null;
         tvPolishCheck = findViewById(R.id.tv_polish_check);
         etModel.addTextChangedListener(new android.text.TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s2, int a, int b, int c) { }
@@ -1306,6 +1298,7 @@ public class SettingsActivity extends AppCompatActivity {
             if (rbLlmCustom != null) rbLlmCustom.setChecked(custom);
             updatingLlmTier = false;
             boolean ready = com.minivoice.ime.asr.LocalLlmModel.ready(this);
+            tvLlmStatus.setVisibility(android.view.View.VISIBLE);
             tvLlmStatus.setText(com.minivoice.ime.asr.LocalLlmModel.statusText(this));
             btnLlmDownload.setVisibility(android.view.View.VISIBLE);
             btnLlmDownload.setEnabled(true);
@@ -1316,6 +1309,7 @@ public class SettingsActivity extends AppCompatActivity {
             else btnLlmDownload.setText(R.string.llm_download);
         } else {
             rgLlmTier.setVisibility(android.view.View.GONE);
+            tvLlmStatus.setVisibility(android.view.View.GONE);
             tvLlmStatus.setText("");
             btnLlmDownload.setVisibility(android.view.View.GONE);
         }
@@ -1672,31 +1666,6 @@ public class SettingsActivity extends AppCompatActivity {
         if (chip == null) return;
         chip.setBackgroundResource(active ? R.drawable.bg_chip_active : R.drawable.bg_chip_idle);
         chip.setTextColor(active ? 0xFFFFFFFF : getColor(R.color.text_secondary));
-    }
-
-    private static byte[] wrapWav(byte[] pcm) {
-        int rate = 16000, ch = 1;
-        int dataLen = pcm.length, byteRate = rate * ch * 2;
-        byte[] h = new byte[44];
-        h[0] = 0x52; h[1] = 0x49; h[2] = 0x46; h[3] = 0x46;
-        int riff = 36 + dataLen;
-        h[4] = (byte) riff; h[5] = (byte) (riff >> 8);
-        h[6] = (byte) (riff >> 16); h[7] = (byte) (riff >> 24);
-        h[8] = 0x57; h[9] = 0x41; h[10] = 0x56; h[11] = 0x45;
-        h[12] = 0x66; h[13] = 0x6D; h[14] = 0x74; h[15] = 0x20;
-        h[16] = 16; h[20] = 1; h[22] = (byte) ch;
-        h[24] = (byte) rate; h[25] = (byte) (rate >> 8);
-        h[26] = (byte) (rate >> 16); h[27] = (byte) (rate >> 24);
-        h[28] = (byte) byteRate; h[29] = (byte) (byteRate >> 8);
-        h[30] = (byte) (byteRate >> 16); h[31] = (byte) (byteRate >> 24);
-        h[32] = (byte) (ch * 2); h[34] = 16;
-        h[36] = 0x64; h[37] = 0x61; h[38] = 0x74; h[39] = 0x61;
-        h[40] = (byte) dataLen; h[41] = (byte) (dataLen >> 8);
-        h[42] = (byte) (dataLen >> 16); h[43] = (byte) (dataLen >> 24);
-        byte[] out = new byte[44 + dataLen];
-        System.arraycopy(h, 0, out, 0, 44);
-        System.arraycopy(pcm, 0, out, 44, dataLen);
-        return out;
     }
 
     /** 用内置的一小段中英文语音真跑一次识别，能转出文字才算通过。 */
@@ -2376,29 +2345,6 @@ public class SettingsActivity extends AppCompatActivity {
                 || low.contains("hello") || low.contains("voice");
     }
 
-    /** allowBadRequest 只给语音模型用：测试音频可能被拒，但模型本身是存在的。 */
-    private boolean postJson(String url, String key, String body, boolean allowBadRequest) {
-        try {
-            okhttp3.OkHttpClient client = probeClient();
-            okhttp3.Request req = new okhttp3.Request.Builder()
-                    .url(url)
-                    .addHeader("Authorization", "Bearer " + key)
-                    .addHeader("X-DashScope-SSE", "disable")
-                    .post(okhttp3.RequestBody.create(body,
-                            okhttp3.MediaType.parse("application/json; charset=utf-8")))
-                    .build();
-            try (okhttp3.Response r = client.newCall(req).execute()) {
-                int code = r.code();
-                if (code >= 200 && code < 300) return true;
-                if (code == 429) return true;
-                String text = r.body() == null ? "" : r.body().string();
-                return allowBadRequest && code == 400 && !modelMissing(text);
-            }
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     private static boolean modelMissing(String body) {
         if (body == null) return false;
         String low = body.toLowerCase(java.util.Locale.ROOT);
@@ -2409,27 +2355,6 @@ public class SettingsActivity extends AppCompatActivity {
 
     private static String escape(String s) {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    /** 0.3 秒静音，16k 16bit 单声道，够触发一次识别请求。 */
-    private static byte[] tinyWav() {
-        int samples = 4800;
-        java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(44 + samples * 2)
-                .order(java.nio.ByteOrder.LITTLE_ENDIAN);
-        b.put("RIFF".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
-        b.putInt(36 + samples * 2);
-        b.put("WAVE".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
-        b.put("fmt ".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
-        b.putInt(16);
-        b.putShort((short) 1);
-        b.putShort((short) 1);
-        b.putInt(16000);
-        b.putInt(32000);
-        b.putShort((short) 2);
-        b.putShort((short) 16);
-        b.put("data".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
-        b.putInt(samples * 2);
-        return b.array();
     }
 
     /** 云端整理模型单独测一次：塞一句满是口水话的样例，看它到底会不会整理。 */
@@ -2609,53 +2534,6 @@ public class SettingsActivity extends AppCompatActivity {
         tvKeyResult.setVisibility(TextView.VISIBLE);
         tvKeyResult.setText(text);
         tvKeyResult.setTextColor(color);
-    }
-
-    /** 取 Key 的 MD5 前 8 位，用来判断输入框里的 Key 有没有变化。 */
-    private String fp(String s) {
-        try {
-            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
-            byte[] d = md.digest(s.getBytes("UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 4; i++) sb.append(String.format("%02x", d[i]));
-            return sb.toString();
-        } catch (Exception e) {
-            return "?";
-        }
-    }
-
-    /** 查一次这台手机的出口 IP，IPv6 出口常被网关当成陌生来源。 */
-    private String fetchOutIp() {
-        try {
-            OkHttpClient c = new OkHttpClient.Builder()
-                    .connectTimeout(6, TimeUnit.SECONDS)
-                    .readTimeout(6, TimeUnit.SECONDS)
-                    .proxy(Proxy.NO_PROXY)
-                    .build();
-            Request req = new Request.Builder().url("https://myip.ipip.net").get().build();
-            try (Response resp = c.newCall(req).execute()) {
-                if (resp.body() == null) return "";
-                String t = resp.body().string();
-                int i = t.indexOf("IP：");
-                if (i < 0) i = t.indexOf("IP:");
-                if (i < 0) return "";
-                String sub = t.substring(i + 3).trim();
-                int sp = sub.indexOf(" ");
-                return (sp > 0 ? sub.substring(0, sp) : sub).trim();
-            }
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    /** 真服务端返回的响应一定带 request_id，没有就说明不是百炼发出来的。 */
-    private String requestId(String json) {
-        try {
-            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-            if (root.has("request_id")) return root.get("request_id").getAsString();
-        } catch (Exception ignored) {
-        }
-        return "";
     }
 
     private String extractMsg(String json) {
@@ -3035,23 +2913,6 @@ public class SettingsActivity extends AppCompatActivity {
         return m.contains("asr") || m.contains("audio") || m.contains("realtime");
     }
 
-    private void updateAsrCheck(String model) {
-        if (tvAsrCheck == null) return;
-        String m = model == null ? "" : model.trim();
-        if (m.isEmpty()) {
-            tvAsrCheck.setVisibility(android.view.View.GONE);
-            return;
-        }
-        tvAsrCheck.setVisibility(android.view.View.VISIBLE);
-        if (looksLikeAsr(m)) {
-            tvAsrCheck.setText(R.string.check_asr_ok);
-            tvAsrCheck.setTextColor(COLOR_GREEN);
-        } else {
-            tvAsrCheck.setText(R.string.check_asr_unknown);
-            tvAsrCheck.setTextColor(COLOR_YELLOW);
-        }
-    }
-
     private void updatePolishCheck(String model) {
         if (tvPolishCheck == null) return;
         String m = model == null ? "" : model.trim();
@@ -3421,7 +3282,7 @@ public class SettingsActivity extends AppCompatActivity {
         box.addView(tip);
 
         android.widget.EditText et = new android.widget.EditText(this);
-        et.setHint("辛静\n极简语音\n魏牌蓝山");
+        et.setHint("李明\n极简语音\n魏牌蓝山");
         et.setText(String.join("\n", Prefs.getWordList(this)));
         et.setTextSize(13);
         et.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
@@ -3743,7 +3604,7 @@ public class SettingsActivity extends AppCompatActivity {
             etCode = null;
             etAlias = new android.widget.EditText(this);
             etText = new android.widget.EditText(this);
-            etText.setHint("正确写法，比如 辛静、极简语音、魏牌蓝山");
+            etText.setHint("正确写法，比如 李明、极简语音、魏牌蓝山");
             etText.setText(p.text);
             etText.setTextSize(13);
             etText.setSingleLine(true);
