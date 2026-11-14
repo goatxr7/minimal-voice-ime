@@ -49,6 +49,7 @@ import androidx.core.content.ContextCompat;
 import java.io.ByteArrayOutputStream;
 
 import com.minivoice.ime.R;
+import com.minivoice.ime.data.ClipHistoryStore;
 import com.minivoice.ime.asr.AsrConfig;
 import com.minivoice.ime.asr.AsrEngine;
 import com.minivoice.ime.asr.BailianAsrEngine;
@@ -98,6 +99,7 @@ public class MinimalVoiceIME extends InputMethodService {
     private ImageButton btnQuickMenu;
     private ImageButton btnQuickIme;
     private ImageButton btnQuickSettings;
+    private ImageButton btnQuickClip;
     /** 当前挂上去的整个键盘根布局，只用来调最小高度，绝不碰它的 LayoutParams。 */
     private View inputRoot;
     /** 微博才显示的展开条和右侧小箭头，点一下切换表情区高度。 */
@@ -150,6 +152,8 @@ public class MinimalVoiceIME extends InputMethodService {
     /** 手指刚按下时的小气泡，显示当前键的主字符，松开就收起。 */
     private PopupWindow tapPopup;
     private TextView tapPopupText;
+    /** 快捷面板里点开的剪贴板历史列表。 */
+    private PopupWindow clipPopup;
     private boolean pinyinMode = true;
     private boolean shiftOn = false;
     private final StringBuilder composing = new StringBuilder();
@@ -286,6 +290,7 @@ public class MinimalVoiceIME extends InputMethodService {
         btnQuickMenu = root.findViewById(R.id.btn_quick_menu);
         btnQuickIme = root.findViewById(R.id.btn_quick_ime);
         btnQuickSettings = root.findViewById(R.id.btn_quick_settings);
+        btnQuickClip = root.findViewById(R.id.btn_quick_clip);
         flExpand = root.findViewById(R.id.fl_expand);
         ivExpand = root.findViewById(R.id.iv_expand);
         tvStatus = root.findViewById(R.id.tv_status);
@@ -311,6 +316,7 @@ public class MinimalVoiceIME extends InputMethodService {
         btnQuickMenu.setColorFilter(iconTint);
         btnQuickIme.setColorFilter(iconTint);
         btnQuickSettings.setColorFilter(iconTint);
+        btnQuickClip.setColorFilter(iconTint);
         btnQuickMenu.setOnClickListener(v -> {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             hideQuickPanel();
@@ -323,6 +329,10 @@ public class MinimalVoiceIME extends InputMethodService {
             v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             hideQuickPanel();
             openSettings();
+        });
+        btnQuickClip.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            showClipHistory();
         });
 
         buildNumberPad();
@@ -408,6 +418,7 @@ public class MinimalVoiceIME extends InputMethodService {
     @Override
     public void onFinishInputView(boolean finishingInput) {
         dismissKeyPopup();
+        dismissClipPopup();
         active = false;
         stopEverything();
         super.onFinishInputView(finishingInput);
@@ -799,6 +810,7 @@ public class MinimalVoiceIME extends InputMethodService {
             llQuick.setVisibility(View.GONE);
         }
         if (btnSettings != null) btnSettings.setVisibility(View.VISIBLE);
+        dismissClipPopup();
     }
 
     /** 切到下一个输入法，切不动就弹系统的输入法选择器。 */
@@ -1856,6 +1868,9 @@ public class MinimalVoiceIME extends InputMethodService {
 
     private void refreshClipboard() {
         clipboardCache = readClipboard();
+        if (!clipboardCache.isEmpty()) {
+            ClipHistoryStore.add(this, clipboardCache);
+        }
         refreshCand();
     }
 
@@ -1888,6 +1903,8 @@ public class MinimalVoiceIME extends InputMethodService {
         if (ic == null) return;
         if (composing.length() > 0) composing.setLength(0);
         ic.commitText(full, 1);
+        // 粘过一次就把候选条上的剪贴板条目收掉，不再常驻显示
+        clipboardCache = "";
         enBuf = "";
         candList.clear();
         phraseText.clear();
@@ -1896,6 +1913,66 @@ public class MinimalVoiceIME extends InputMethodService {
         candVersion++;
         refreshCand();
         updateVoiceBar();
+    }
+
+    /** 展开剪贴板历史列表，点一条直接粘贴上屏。 */
+    private void showClipHistory() {
+        java.util.List<String> history = ClipHistoryStore.list(this);
+        if (clipPopup != null && clipPopup.isShowing()) clipPopup.dismiss();
+        if (history.isEmpty()) {
+            Toast.makeText(this, "暂无剪贴板记录", Toast.LENGTH_SHORT).show();
+            hideQuickPanel();
+            return;
+        }
+
+        LinearLayout column = new LinearLayout(uiCtx);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setBackgroundResource(R.drawable.bg_key_popup);
+        column.setPadding(dp(4), dp(4), dp(4), dp(4));
+
+        for (int i = 0; i < history.size(); i++) {
+            final String entry = history.get(i);
+            TextView tv = new TextView(uiCtx);
+            String show = entry.length() > 24 ? entry.substring(0, 24) + "…" : entry;
+            tv.setText(show);
+            tv.setTextSize(14);
+            tv.setIncludeFontPadding(false);
+            tv.setTextColor(uiCtx.getColor(R.color.text_primary));
+            tv.setMaxLines(1);
+            tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            tv.setPadding(dp(12), dp(12), dp(12), dp(12));
+            tv.setOnClickListener(v -> {
+                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                dismissClipPopup();
+                hideQuickPanel();
+                commitClipboard(entry);
+            });
+            column.addView(tv);
+            if (i < history.size() - 1) {
+                View divider = new View(uiCtx);
+                divider.setBackgroundColor(uiCtx.getColor(R.color.divider));
+                column.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+            }
+        }
+        android.widget.ScrollView sv = new android.widget.ScrollView(uiCtx);
+        sv.addView(column);
+
+        int width = (inputRoot != null && inputRoot.getWidth() > dp(280))
+                ? inputRoot.getWidth() - dp(12) : dp(280);
+        clipPopup = new PopupWindow(sv, width, dp(260), false);
+        clipPopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        clipPopup.setOutsideTouchable(true);
+        clipPopup.setFocusable(true);
+        clipPopup.setElevation(dp(6));
+        if (btnQuickClip != null) {
+            clipPopup.showAsDropDown(btnQuickClip, 0,
+                    -(dp(260) + btnQuickClip.getHeight() + dp(6)));
+        }
+    }
+
+    private void dismissClipPopup() {
+        if (clipPopup != null && clipPopup.isShowing()) clipPopup.dismiss();
     }
 
     private void commitCandidate(String cand) {

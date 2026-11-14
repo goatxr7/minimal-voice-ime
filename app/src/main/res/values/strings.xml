@@ -15,6 +15,7 @@
     <string name="btn_collapse">收起键盘到语音输入</string>
     <string name="quick_switch_ime">切换输入法</string>
     <string name="quick_open_settings">设置</string>
+    <string name="quick_open_clipboard">剪贴板</string>
 
     <string name="voice_hint">按住说话</string>
     <string name="voice_swipe_cancel">上滑取消</string>
