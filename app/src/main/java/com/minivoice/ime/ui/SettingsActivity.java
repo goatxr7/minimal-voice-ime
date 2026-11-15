@@ -61,6 +61,8 @@ public class SettingsActivity extends AppCompatActivity {
 
     private TextView tvCheckUpdateDot;
     private TextView tvCheckUpdate;
+    private TextView tvVersionTopDot;
+    private LinearLayout llVersionTop;
     private LinearLayout llUpdateFooter;
     private UpdateManager.UpdateInfo pendingUpdate;
     private File pendingInstallFile;
@@ -365,6 +367,11 @@ public class SettingsActivity extends AppCompatActivity {
 
         TextView tvVersion = findViewById(R.id.tv_version);
         tvVersion.setText(UpdateManager.versionLabel(this));
+        TextView tvVersionTop = findViewById(R.id.tv_version_top);
+        if (tvVersionTop != null) tvVersionTop.setText(UpdateManager.versionLabel(this));
+        tvVersionTopDot = findViewById(R.id.tv_version_top_dot);
+        llVersionTop = findViewById(R.id.ll_version_top);
+        if (llVersionTop != null) llVersionTop.setOnClickListener(v -> onUpdateEntry());
         tvCheckUpdateDot = findViewById(R.id.tv_check_update_dot);
         tvCheckUpdate = findViewById(R.id.tv_check_update);
         llUpdateFooter = findViewById(R.id.ll_update_footer);
@@ -3049,10 +3056,12 @@ public class SettingsActivity extends AppCompatActivity {
             if (info != null) {
                 pendingUpdate = info;
                 if (tvCheckUpdateDot != null) tvCheckUpdateDot.setVisibility(View.VISIBLE);
+                if (tvVersionTopDot != null) tvVersionTopDot.setVisibility(View.VISIBLE);
                 if (manual) showUpdateDialog(info);
             } else {
                 pendingUpdate = null;
                 if (tvCheckUpdateDot != null) tvCheckUpdateDot.setVisibility(View.GONE);
+                if (tvVersionTopDot != null) tvVersionTopDot.setVisibility(View.GONE);
                 if (manual) {
                     String msg = error == null
                             ? "当前已经是最新版本 " + UpdateManager.versionLabel(this)

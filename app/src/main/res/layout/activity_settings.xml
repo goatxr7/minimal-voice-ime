@@ -4,6 +4,10 @@
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
             <ImageView android:layout_width="26dp" android:layout_height="26dp" android:layout_marginEnd="8dp" android:contentDescription="@string/settings_title" android:src="@drawable/ic_brand" />
             <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/settings_title" android:textColor="@color/text_primary" android:textSize="20sp" android:textStyle="bold" />
+            <LinearLayout android:id="@+id/ll_version_top" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center_vertical" android:minHeight="30dp" android:orientation="horizontal" android:paddingStart="6dp" android:paddingEnd="2dp">
+                <TextView android:id="@+id/tv_version_top_dot" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="5dp" android:text="●" android:textColor="@color/recording" android:textSize="8sp" android:visibility="gone" />
+                <TextView android:id="@+id/tv_version_top" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/text_secondary" android:textSize="11sp" />
+            </LinearLayout>
         </LinearLayout>
         <LinearLayout android:layout_width="match_parent" android:layout_height="32dp" android:layout_marginTop="2dp" android:background="@drawable/bg_segment_plain" android:orientation="horizontal" android:padding="2dp">
             <TextView android:id="@+id/tab_voice" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@drawable/bg_chip_active" android:gravity="center" android:text="模型设置" android:textColor="@color/on_accent" android:textSize="12sp" />

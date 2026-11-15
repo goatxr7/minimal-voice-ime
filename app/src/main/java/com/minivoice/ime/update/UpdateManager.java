@@ -116,6 +116,7 @@ public final class UpdateManager {
         Request request = new Request.Builder()
                 .url(MANIFEST_URL)
                 .header("Cache-Control", "no-cache")
+                .header("User-Agent", "MinVoiceIME/0.6 (Android)")
                 .build();
         CLIENT.newCall(request).enqueue(new Callback() {
             @Override
@@ -130,6 +131,11 @@ public final class UpdateManager {
                     if (rb != null) body = rb.string();
                 } catch (Exception e) {
                     MAIN.post(() -> callback.onResult(null, "读取更新信息失败"));
+                    return;
+                }
+                body = body == null ? "" : body.trim();
+                if (body.isEmpty()) {
+                    MAIN.post(() -> callback.onResult(null, "更新信息为空"));
                     return;
                 }
                 if (!response.isSuccessful()) {
@@ -191,7 +197,8 @@ public final class UpdateManager {
                         }
                     });
                 } catch (Exception e) {
-                    MAIN.post(() -> callback.onResult(null, "更新信息格式不对"));
+                    String head = body.length() > 60 ? body.substring(0, 60) : body;
+                    MAIN.post(() -> callback.onResult(null, "更新信息格式不对：" + head));
                 }
             }
         });

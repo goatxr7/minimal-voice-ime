@@ -1,8 +1,8 @@
 {
-  "versionCode": 161,
-  "versionName": "0.6.58",
-  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.58/minimal-voice-0.6.58-debug.apk",
-  "sha256": "d0e8b550863f808ab750463df56906bad5ed7fb846fd74d15e0ffb7a72c8594d",
-  "notes": "1. 模型列表排除 max、pro、turbo 等高档付费模型，百炼域名只列 flash 轻量档，付费模型不读取也不发测试请求，已选付费模型标红提醒按量计费。\n2. 修复云端版本号低于本机仍误提示更新的问题，只有云端版本号更高才推送，版本号相同再比对整包哈希判断是否重打包。",
+  "versionCode": 162,
+  "versionName": "0.6.59",
+  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.59/minimal-voice-0.6.59-debug.apk",
+  "sha256": "a5c96dde21763e5c083b659329d4238d4e7b382506544bd94eeae940a726238d",
+  "notes": "1. 设置页右上角版本号可点击触发检查更新，有新版本时版本号前显示红点，底部检查更新入口保留。\n2. 更新检查补充请求标识，空响应和清单解析失败给出明确提示，便于区分网络问题和格式问题。",
   "force": false
 }
