@@ -1,8 +1,8 @@
 {
-  "versionCode": 160,
-  "versionName": "0.6.57",
-  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.57/minimal-voice-0.6.57-debug.apk",
-  "sha256": "65a56e15491698f9563083f56fc7441df4c5a011b7c0a0d873337506c5788478",
-  "notes": "1. 修复设置页左右跟手翻页后上下滚动内容消失，以及来回滑动两次后页面错乱不显示的问题。\n2. 快捷面板按钮顺序调整，设置键排在最右边，按钮整体缩小一档。\n3. 键盘按键贴顶排布，底部留白加大，不再和底部手势小白条冲突。",
+  "versionCode": 161,
+  "versionName": "0.6.58",
+  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.58/minimal-voice-0.6.58-debug.apk",
+  "sha256": "d0e8b550863f808ab750463df56906bad5ed7fb846fd74d15e0ffb7a72c8594d",
+  "notes": "1. 模型列表排除 max、pro、turbo 等高档付费模型，百炼域名只列 flash 轻量档，付费模型不读取也不发测试请求，已选付费模型标红提醒按量计费。\n2. 修复云端版本号低于本机仍误提示更新的问题，只有云端版本号更高才推送，版本号相同再比对整包哈希判断是否重打包。",
   "force": false
 }

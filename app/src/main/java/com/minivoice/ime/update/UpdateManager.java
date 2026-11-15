@@ -171,9 +171,19 @@ public final class UpdateManager {
                     }
                     final String localShaFinal = localSha;
                     MAIN.post(() -> {
-                        boolean newer = result.versionCode > currentVersionCode(app)
-                                || (!localShaFinal.isEmpty()
-                                        && !result.sha256.equalsIgnoreCase(localShaFinal));
+                        long localCode = currentVersionCode(app);
+                        boolean newer;
+                        if (result.versionCode > localCode) {
+                            // 云端版本号更高，才推送更新。
+                            newer = true;
+                        } else if (result.versionCode == localCode) {
+                            // 版本号相同，再比对整包内容哈希，重打包同版本也能检测到更新。
+                            newer = !localShaFinal.isEmpty()
+                                    && !result.sha256.equalsIgnoreCase(localShaFinal);
+                        } else {
+                            // 云端版本号更低，不提示更新。
+                            newer = false;
+                        }
                         if (newer) {
                             callback.onResult(result, null);
                         } else {

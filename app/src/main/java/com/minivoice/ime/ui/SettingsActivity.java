@@ -1803,7 +1803,14 @@ public class SettingsActivity extends AppCompatActivity {
     /** 当前模型到底能不能边说边出字，用颜色和字重明显地写在模型框下面。 */
     private void updateModelCapability(String id) {
         if (tvModelHint == null) return;
-        String low = id == null ? "" : id.toLowerCase(java.util.Locale.ROOT);
+        String clean = cleanModelId(id);
+        if (looksLikePaidModel(clean)) {
+            tvModelHint.setText("● 当前为付费高档模型，按量计费，请谨慎使用");
+            tvModelHint.setTextColor(COLOR_RED);
+            tvModelHint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            return;
+        }
+        String low = clean == null ? "" : clean.toLowerCase(java.util.Locale.ROOT);
         if (low.contains("realtime") || low.contains("streaming")) {
             tvModelHint.setText("● 当前模型支持流式输入");
             tvModelHint.setTextColor(COLOR_GREEN);
@@ -2073,7 +2080,8 @@ public class SettingsActivity extends AppCompatActivity {
         ids.addAll(knownModels(ep, polish));
         java.util.List<String> out = new java.util.ArrayList<>();
         for (String id : ids) {
-            if (isModelCandidate(id, polish)) out.add(id);
+            // 高档付费模型直接隐藏，不进下拉也不参与试跑，避免误选扣费。
+            if (isModelCandidate(id, polish) && isAllowedModel(id, polish, ep)) out.add(id);
         }
         // 文本模型目录通常一百多个，全测太慢、下拉也太长。
         // 先按“新模型 / 通用对话 / 低延迟”排序，只验前 40 个，识别侧不截断。
@@ -2148,6 +2156,42 @@ public class SettingsActivity extends AppCompatActivity {
                 || low.contains("glm-asr");
         // 识别只留语音类；整理只留非语音类，避免把 TTS、识别模型混进整理列表。
         return polish != audio;
+    }
+
+    /**
+     * 按模型名判断是不是高档按量付费模型。模型列表接口不返回价格和免费额度余量，
+     * 这里只做保守名称匹配：命中明显高档关键词的直接从下拉隐藏，避免误选扣费。
+     * 含 flash 的轻量快照和 omni-flash 不算付费。
+     */
+    private boolean looksLikePaidModel(String id) {
+        if (id == null) return false;
+        String low = id.toLowerCase(java.util.Locale.ROOT);
+        boolean flash = low.contains("flash");
+        String[] paidWords = {"max", "pro", "plus", "turbo", "ultra", "flagship",
+                "reasoning", "think", "r1", "r2", "o1", "o3"};
+        for (String w : paidWords) {
+            if (low.contains(w)) return true;
+        }
+        // omni 多模态高档，omni-flash 属于轻量档除外。
+        if (low.contains("omni") && !flash) return true;
+        // 日期快照，如 qwen3.7-flash-2026-07-15；带 flash 的轻量快照保留。
+        // 只认年份-月份这种 ISO 快照，纯短数字后缀（如 glm-asr-2512）是型号编号，不误判。
+        if (!flash && low.matches(".*-\\d{4}-\\d{2}(-\\d{2})?.*")) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 模型列表是否放行进下拉。先排除明显高档付费词；百炼域名再收紧为白名单，
+     * 只保留 flash 轻量档，避免读到 max、pro 等按量付费模型。非百炼平台缺少价格
+     * 信息，只排除明显高档词，其余交给真实测试决定。
+     */
+    private boolean isAllowedModel(String id, boolean polish, String ep) {
+        if (looksLikePaidModel(id)) return false;
+        if (!AsrConfig.isBailianEndpoint(ep)) return true;
+        String low = id == null ? "" : id.toLowerCase(java.util.Locale.ROOT);
+        return low.contains("flash");
     }
 
     /** 文本模型按整理时真实的提示词和样例试一次，能正常回话才算可用。 */
@@ -2934,6 +2978,9 @@ public class SettingsActivity extends AppCompatActivity {
         tvPolishCheck.setVisibility(android.view.View.VISIBLE);
         if (looksLikeAsr(m)) {
             tvPolishCheck.setText(R.string.check_polish_bad);
+            tvPolishCheck.setTextColor(COLOR_RED);
+        } else if (looksLikePaidModel(m)) {
+            tvPolishCheck.setText("付费高档模型，按量计费，请谨慎使用");
             tvPolishCheck.setTextColor(COLOR_RED);
         } else {
             tvPolishCheck.setText(R.string.check_polish_ok);
