@@ -1058,6 +1058,19 @@ public class MinimalVoiceIME extends InputMethodService {
 
         new Thread(() -> com.minivoice.ime.input.RimeEngine.initAsync(getApplicationContext())).start();
 
+        // rime 后台就绪后，若正在拼音输入，自动补刷一次候选，避免一直停在空态
+        new Thread(() -> {
+            boolean was = com.minivoice.ime.input.RimeEngine.isReady();
+            int waits = 0;
+            while (!com.minivoice.ime.input.RimeEngine.isReady() && waits < 75) {
+                try { Thread.sleep(400); } catch (InterruptedException e) { return; }
+                waits++;
+            }
+            if (!was && com.minivoice.ime.input.RimeEngine.isReady()) {
+                main.post(() -> { if (pinyinMode) refreshCand(); });
+            }
+        }).start();
+
         int idx = parent.indexOfChild(flKeysRow);
         parent.addView(llFull, idx, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1696,21 +1709,25 @@ public class MinimalVoiceIME extends InputMethodService {
         if (candDebounce != null) main.removeCallbacks(candDebounce);
         // 连续敲键时每 35 毫秒只算最后一串，中间结果直接跳过
         candDebounce = () -> candPool.execute(() -> {
-            if (version != candVersion) return;
-            final java.util.List<com.minivoice.ime.data.PhraseStore.Phrase> phrases =
-                    com.minivoice.ime.data.PhraseStore.match(
-                            getApplicationContext(), letters, 3);
-            if (version != candVersion) return;
-            final java.util.List<com.minivoice.ime.input.RimeEngine.Cand> dict =
-                    com.minivoice.ime.input.RimeEngine.candidates(
-                            getApplicationContext(), letters);
-            if (version != candVersion) return;
-            main.post(() -> {
+            try {
                 if (version != candVersion) return;
-                if (pinyinMode && letters.equals(composing.toString())) {
-                    renderPinyinCand(letters, phrases, dict);
-                }
-            });
+                final java.util.List<com.minivoice.ime.data.PhraseStore.Phrase> phrases =
+                        com.minivoice.ime.data.PhraseStore.match(
+                                getApplicationContext(), letters, 3);
+                if (version != candVersion) return;
+                final java.util.List<com.minivoice.ime.input.RimeEngine.Cand> dict =
+                        com.minivoice.ime.input.RimeEngine.candidates(
+                                getApplicationContext(), letters);
+                if (version != candVersion) return;
+                main.post(() -> {
+                    if (version != candVersion) return;
+                    if (pinyinMode && letters.equals(composing.toString())) {
+                        renderPinyinCand(letters, phrases, dict);
+                    }
+                });
+            } catch (Throwable t) {
+                android.util.Log.e("MinimalVoiceIME", "cand compute error", t);
+            }
         });
         main.postDelayed(candDebounce, 35);
     }

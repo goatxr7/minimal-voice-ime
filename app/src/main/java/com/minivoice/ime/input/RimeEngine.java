@@ -134,6 +134,18 @@ public final class RimeEngine {
                 break;
             }
         }
+        // 上次初始化若异常结束，部署线程已退出，这里再拉起一次并继续等一段，避免永久空候选
+        if (!ready.get() && !deploying.get()) {
+            initAsync(app);
+            long deadline2 = System.currentTimeMillis() + 1500;
+            while (!ready.get() && System.currentTimeMillis() < deadline2) {
+                try {
+                    Thread.sleep(60);
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        }
         if (!ready.get()) return new ArrayList<>();
         loadSyllables(app);
         String low = letters.toLowerCase();

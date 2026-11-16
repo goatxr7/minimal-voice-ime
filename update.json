@@ -1,8 +1,8 @@
 {
-  "versionCode": 162,
-  "versionName": "0.6.59",
-  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.59/minimal-voice-0.6.59-debug.apk",
-  "sha256": "a5c96dde21763e5c083b659329d4238d4e7b382506544bd94eeae940a726238d",
-  "notes": "1. 设置页右上角版本号可点击触发检查更新，有新版本时版本号前显示红点，底部检查更新入口保留。\n2. 更新检查补充请求标识，空响应和清单解析失败给出明确提示，便于区分网络问题和格式问题。",
+  "versionCode": 163,
+  "versionName": "0.6.60",
+  "apkUrl": "https://gitee.com/techman68/minimal-voice-ime/releases/download/v0.6.60/minimal-voice-0.6.60-debug.apk",
+  "sha256": "a795bb3293ccd8421a18139fe2ad9c082d60a62d03df2fd854f36b896d530373",
+  "notes": "1. 修复全键盘中文偶发候选词空白，候选计算加异常兜底，rime 初始化失败自动重试，就绪后自动补刷候选。\n2. 设置页左右翻页放宽斜向手势，左下、右下等带倾角的滑动也能切页，纯上下滚动仍优先。",
   "force": false
 }

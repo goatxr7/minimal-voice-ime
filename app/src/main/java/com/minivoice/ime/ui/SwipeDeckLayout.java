@@ -33,6 +33,8 @@ public class SwipeDeckLayout extends FrameLayout {
     private float downX;
     private float downY;
     private final int touchSlop;
+    /** 横向手势容差：水平位移达到竖直位移的该比例即算翻页，放宽后左下、右下等斜向滑动也能识别。 */
+    private final float horizontalRatio = 0.65f;
     private VelocityTracker tracker;
 
     public SwipeDeckLayout(Context context) {
@@ -138,7 +140,7 @@ public class SwipeDeckLayout extends FrameLayout {
             case MotionEvent.ACTION_MOVE: {
                 float dx = ev.getX() - downX;
                 float dy = ev.getY() - downY;
-                if (!dragging && Math.abs(dx) > touchSlop && Math.abs(dx) > Math.abs(dy) * 1.2f) {
+                if (!dragging && Math.abs(dx) > touchSlop && Math.abs(dx) > Math.abs(dy) * horizontalRatio) {
                     if (canSwipe(dx)) {
                         dragging = true;
                         swipeActive = true;
